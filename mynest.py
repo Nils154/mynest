@@ -118,16 +118,22 @@ def get_device_status():
     deviceid = nest['devices'][0]['name']
     print('Device Type:', nest['devices'][0]['type'])
     roomkey = nest['devices'][0]['assignee']
-    print('Device Traits:', nest['devices'][0]['traits'])
+    print('Device Traits:', json.dumps(nest['devices'][0]['traits'], indent=4))
     print('Humidity:', nest['devices'][0]['traits']['sdm.devices.traits.Humidity']['ambientHumidityPercent'])
+    print('FanMode:', nest['devices'][0]['traits']['sdm.devices.traits.Fan']['timerMode'])
     nestmode = nest['devices'][0]['traits']['sdm.devices.traits.ThermostatMode']['mode']
     ecomode = nest['devices'][0]['traits']['sdm.devices.traits.ThermostatEco']['mode']
     neststate = nest['devices'][0]['traits']['sdm.devices.traits.ThermostatHvac']['status']
+    # not bothering with HEATCOOL mode and returning two temperatures
+    ttarget = float('NAN')
+
     if ecomode == 'OFF':
-        ttarget = nest['devices'][0]['traits']['sdm.devices.traits.ThermostatTemperatureSetpoint'][
-                      'heatCelsius'] * 9 / 5 + 32
-    else:
-        ttarget = float('NAN')
+        if nestmode == 'HEAT':
+            ttarget = nest['devices'][0]['traits']['sdm.devices.traits.ThermostatTemperatureSetpoint'][
+                          'heatCelsius'] * 9 / 5 + 32
+        if nestmode == 'COOL':
+            ttarget = nest['devices'][0]['traits']['sdm.devices.traits.ThermostatTemperatureSetpoint'][
+                          'coolCelsius'] * 9 / 5 + 32
     temperature = nest['devices'][0]['traits']['sdm.devices.traits.Temperature'][
                       'ambientTemperatureCelsius'] * 9 / 5 + 32
     return roomkey, deviceid, nestmode, neststate, ttarget, temperature, ecomode
@@ -189,11 +195,59 @@ def set_fan_mode(deviceid, fanmode):
     url = 'https://smartdevicemanagement.googleapis.com/v1/' + deviceid + ':executeCommand'
     print('url:', url)
     headers = {'Content-Type': 'application/json', 'Authorization': 'Bearer ' + access_token}
-    data = {'command': 'sdm.devices.traits.Fan',
-            'params': {'timerMode': fanmode}}
+    data = {'command': 'sdm.devices.commands.Fan.SetTimer',
+            'params': {'timerMode': fanmode,
+                       'duration': '1200s'}}
     resp = requests.post(url, headers=headers, data=json.dumps(data))
     print(resp.status_code)
     print("execute_response:", resp.content)
+
+
+def temperature_setheat(deviceid, setpoint):
+    url = 'https://smartdevicemanagement.googleapis.com/v1/' + deviceid + ':executeCommand'
+    print('url:', url)
+    headers = {'Content-Type': 'application/json', 'Authorization': 'Bearer ' + access_token}
+    data = {'command': 'sdm.devices.commands.ThermostatTemperatureSetpoint.SetHeat',
+            'params': {'heatCelsius': (setpoint-32)/9*5}}
+    resp = requests.post(url, headers=headers, data=json.dumps(data))
+    print("execute_response:", resp.content)
+    return resp.status_code
+
+
+def temperature_setcool(deviceid, setpoint):
+    url = 'https://smartdevicemanagement.googleapis.com/v1/' + deviceid + ':executeCommand'
+    print('url:', url)
+    headers = {'Content-Type': 'application/json', 'Authorization': 'Bearer ' + access_token}
+    data = {'command': 'sdm.devices.commands.ThermostatTemperatureSetpoint.SetCool',
+            'params': {'coolCelsius': (setpoint-32)/9*5}}
+    resp = requests.post(url, headers=headers, data=json.dumps(data))
+    print("execute_response:", resp.content)
+    return resp.status_code
+
+
+def temperature_setrange(deviceid, heatesetpoint, coolsetpoint):
+    url = 'https://smartdevicemanagement.googleapis.com/v1/' + deviceid + ':executeCommand'
+    print('url:', url)
+    headers = {'Content-Type': 'application/json', 'Authorization': 'Bearer ' + access_token}
+    data = {'command': 'sdm.devices.commands.ThermostatTemperatureSetpoint.SetRange',
+            'params': {
+                        'heatCelsius': (heatesetpoint-32)/9*5,
+                        'coolCelsius': (coolsetpoint-32)/9*5}}
+    resp = requests.post(url, headers=headers, data=json.dumps(data))
+    print("execute_response:", resp.content)
+    return resp.status_code
+
+
+def set_hvac_mode(deviceid, mode):
+    url = 'https://smartdevicemanagement.googleapis.com/v1/' + deviceid + ':executeCommand'
+    print('url:', url)
+    headers = {'Content-Type': 'application/json', 'Authorization': 'Bearer ' + access_token}
+    data = {'command': 'sdm.devices.commands.ThermostatMode.SetMode',
+            'params': {
+                        'mode': mode}}
+    resp = requests.post(url, headers=headers, data=json.dumps(data))
+    print("execute_response:", resp.content)
+    return resp.status_code
 
 
 def main():
@@ -211,6 +265,21 @@ def main():
     print('ECO Mode: ', ecomode)
     if ecomode == 'MANUAL_ECO':
         set_eco_mode(deviceid, 'OFF')
+    set_hvac_mode(deviceid, 'HEAT')
+    if ttarget % 2 < 1:
+        temperature_setheat(deviceid, ttarget + 1)
+    else:
+        temperature_setheat(deviceid, ttarget - 1)
+    input('Check that temperature setpoint changed?')
+    set_hvac_mode(deviceid, 'COOL')
+    temperature_setcool(deviceid, 76)
+    answer = input('Should I run the fan for 20 minutes (y/N)?')
+    if answer == 'y':
+        set_fan_mode(deviceid, 'ON')
+    roomid, deviceid, nestmode, neststate, ttarget, temperature, ecomode = get_device_status()
+    print('Nest Mode:', nestmode)
+    print('ttarget:', ttarget)
+    set_hvac_mode(deviceid, 'HEAT')
 
 
 if __name__ == '__main__':
