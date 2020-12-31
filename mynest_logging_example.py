@@ -9,9 +9,9 @@ from mysql_controller_module import insert_record
 
 delay = 12*60
 nest.request_tokens()
+status = 'None'
 downstairsid = 'None'
 LastStatus = 'None'
-Status = 'None'
 nestmode = 'None'
 neststate = 'None'
 Away = 'N/A'
@@ -41,7 +41,7 @@ while True:
     print('TTarget: %.1f' % ttarget)
     # control Nest Fan
     print('DeltaT = ', max([tbedroom, tdownstairs, ttarget]) - min([tbedroom, tdownstairs, ttarget]))
-    if (Status == 'AC') and (nestmode == 'cool') and (neststate != 'cooling'):
+    if (nestmode == 'cool') and (neststate != 'cooling'):
         if max([tbedroom, tdownstairs, ttarget]) - min([tbedroom, tdownstairs, ttarget]) > 2:
             print('This is where we would turn on the fan')
             FanRequest = 'ON'
